@@ -5,12 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Maze.io Multiplayer</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <style> canvas { background: #111; display: block; margin: auto; } </style>
+    <style>
+        body { text-align: center; background: #222; color: white; font-family: Arial, sans-serif; }
+        canvas { background: black; display: block; margin: auto; border: 2px solid white; }
+    </style>
 </head>
 <body>
+    <h1>Maze.io - Multiplayer</h1>
     <canvas id="gameCanvas"></canvas>
     <script>
-        const socket = io("https://9a8cb75d-9b82-4109-b371-a44689595cb5-00-264cj26sz3fi6.pike.replit.dev/"); // Change this to your WebSocket server URL
+        const socket = io("https://9a8cb75d-9b82-4109-b371-a44689595cb5-00-264cj26sz3fi6.pike.replit.dev/"); // Replace with your actual Replit WebSocket URL
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
@@ -18,22 +22,50 @@
         canvas.width = COLS * CELL_SIZE;
         canvas.height = ROWS * CELL_SIZE;
 
-        const players = {}; // Store all players
+        let maze = generateMaze(COLS, ROWS);
+        let players = {};
         let playerId = null;
-        let playerPos = { x: 0, y: 0 };
+        let playerPos = { x: 1, y: 1 };
 
-        socket.on("connect", () => {
-            playerId = socket.id;
-        });
+        socket.on("connect", () => { playerId = socket.id; });
 
         socket.on("updatePlayers", (data) => {
-            Object.assign(players, data);
+            players = data;
             drawMaze();
         });
+
+        function generateMaze(cols, rows) {
+            let grid = Array.from({ length: rows }, () => Array(cols).fill(1));
+            function carve(x, y) {
+                grid[y][x] = 0;
+                let directions = [[0,1],[1,0],[0,-1],[-1,0]].sort(() => Math.random() - 0.5);
+                for (let [dx, dy] of directions) {
+                    let nx = x + dx * 2, ny = y + dy * 2;
+                    if (nx > 0 && ny > 0 && nx < cols - 1 && ny < rows - 1 && grid[ny][nx] === 1) {
+                        grid[y + dy][x + dx] = 0;
+                        carve(nx, ny);
+                    }
+                }
+            }
+            carve(1, 1);
+            grid[rows - 2][cols - 2] = 0;
+            return grid;
+        }
 
         function drawMaze() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Draw maze walls
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (maze[y][x] === 1) {
+                        ctx.fillStyle = "white";
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
+                }
+            }
+
+            // Draw players
             for (let id in players) {
                 const p = players[id];
                 ctx.fillStyle = id === playerId ? "blue" : "red";
@@ -42,9 +74,11 @@
         }
 
         function move(dx, dy) {
-            playerPos.x += dx;
-            playerPos.y += dy;
-            socket.emit("move", playerPos);
+            let newX = playerPos.x + dx, newY = playerPos.y + dy;
+            if (maze[newY] && maze[newY][newX] === 0) {
+                playerPos = { x: newX, y: newY };
+                socket.emit("move", playerPos);
+            }
         }
 
         document.addEventListener("keydown", (e) => {
@@ -54,6 +88,7 @@
             if (e.key === "ArrowRight") move(1, 0);
         });
 
+        drawMaze();
     </script>
 </body>
 </html>
